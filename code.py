@@ -26,7 +26,7 @@ START_DELAY_S = 8.0
 KEY_DOWN_S = 0.05       # how long each key is held
 KEY_UP_S = 0.05         # gap after release before next key
 CHAR_GAP_S = 0.04       # extra gap between characters
-LINE_DELAY_S = 0.40     # pause after Enter so the editor settles
+LINE_DELAY_S = 0.08     # short pause after Enter (was 0.40; that dominated runtime)
 SHIFT_SETTLE_S = 0.03   # wait after pressing Shift before the key
 
 

@@ -105,13 +105,13 @@ After `boot.py` runs on the next plug-in, **CIRCUITPY may disappear**. That is i
 
 ## Timing knobs
 
-Edit the top of `code.py` (in maintenance mode). Balanced defaults aim for ~8–10 minutes:
+Edit the top of `code.py` (in maintenance mode). Defaults aim for ~7–9 minutes:
 
 - `START_DELAY_S` — wait after plug-in (default `8.0`)
-- `KEY_DOWN_S` / `KEY_UP_S` — key hold and release (default `0.025`)
-- `CHAR_GAP_S` — gap between characters (default `0.02`)
-- `LINE_DELAY_S` — pause after Enter (default `0.12`)
-- `SHIFT_SETTLE_S` — delay after pressing Shift (default `0.02`)
+- `KEY_DOWN_S` / `KEY_UP_S` — key hold and release (default `0.018`)
+- `CHAR_GAP_S` — gap between characters (default `0.012`)
+- `LINE_DELAY_S` — pause after Enter (default `0.10`)
+- `SHIFT_SETTLE_S` — delay after pressing Shift (default `0.015`)
 
 If symbols/`#`/`$` drop, increase `KEY_DOWN_S`, `KEY_UP_S`, and `CHAR_GAP_S` slightly.
 

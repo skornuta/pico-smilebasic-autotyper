@@ -23,11 +23,11 @@ BOOTSTRAP_PATH = "bootstrap.bas"
 
 # Deliberately slow — hosts drop keys if press/release is too short.
 START_DELAY_S = 8.0
-KEY_DOWN_S = 0.05       # how long each key is held
-KEY_UP_S = 0.05         # gap after release before next key
-CHAR_GAP_S = 0.04       # extra gap between characters
-LINE_DELAY_S = 0.08     # short pause after Enter (was 0.40; that dominated runtime)
-SHIFT_SETTLE_S = 0.03   # wait after pressing Shift before the key
+KEY_DOWN_S = 0.025      # how long each key is held
+KEY_UP_S = 0.025        # gap after release before next key
+CHAR_GAP_S = 0.02       # extra gap between characters
+LINE_DELAY_S = 0.12     # pause after Enter (SmileBASIC-friendly)
+SHIFT_SETTLE_S = 0.02   # wait after pressing Shift before the key
 
 
 def build_keymap():

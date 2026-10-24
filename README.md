@@ -103,6 +103,14 @@ After `boot.py` runs on the next plug-in, **CIRCUITPY may disappear**. That is i
 3. **CIRCUITPY** returns; copy the app files again.
 4. Add `boot.py` last when you are ready for Switch use.
 
+
+## Auto-indent note
+
+SmileBASIC inserts indent on Enter inside `DEF` / `FOR` / `IF` blocks. This package
+**strips leading spaces** from `bootstrap.bas` when typing and clears auto-indent
+(HOME, Ctrl+Delete, Shift+Tab) before each line so spacing does not stack and break
+later lines (e.g. around line 147). Leading indent is cosmetic in SmileBASIC.
+
 ## Timing knobs
 
 Edit the top of `code.py` (in maintenance mode). Balanced defaults aim for ~8–10 minutes:

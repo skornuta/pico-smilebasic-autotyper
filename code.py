@@ -1,12 +1,13 @@
 # Raspberry Pi Pico CircuitPython auto-typer for SmileBASIC.
 #
-# Types bootstrap.bas exactly: spaces, caps, symbols, newlines.
-# Explicit US keycodes with slow press/release (no layout.write bursts).
+# Types bootstrap.bas into SmileBASIC.
+# Strips leading indent: SB auto-indents on Enter inside DEF/FOR/IF, and if we
+# also type file spaces the indent stacks (works at the start, breaks later).
+# After each Enter: HOME + Ctrl+DELETE + Shift+TAB clears auto-indent, then
+# the next line is typed with no leading spaces (valid SmileBASIC).
 #
-# CIRCUITPY:
-#   boot.py, code.py, bootstrap.bas, lib/adafruit_hid/
-#
-# LED: slow blink=wait, toggle=typing, solid=done, 3-blink loop=error
+# CIRCUITPY: boot.py, code.py, bootstrap.bas, lib/adafruit_hid/
+# LED: slow blink=wait, toggle=typing, solid=done, 3-blink=error
 
 import time
 import board
@@ -21,13 +22,12 @@ except ImportError:
 
 BOOTSTRAP_PATH = "bootstrap.bas"
 
-# Deliberately slow — hosts drop keys if press/release is too short.
 START_DELAY_S = 8.0
-KEY_DOWN_S = 0.025      # how long each key is held
-KEY_UP_S = 0.025        # gap after release before next key
-CHAR_GAP_S = 0.02       # extra gap between characters
-LINE_DELAY_S = 0.12     # pause after Enter (SmileBASIC-friendly)
-SHIFT_SETTLE_S = 0.02   # wait after pressing Shift before the key
+KEY_DOWN_S = 0.025
+KEY_UP_S = 0.025
+CHAR_GAP_S = 0.02
+LINE_DELAY_S = 0.12
+SHIFT_SETTLE_S = 0.02
 
 
 def build_keymap():
@@ -99,7 +99,6 @@ def wait_with_blink(led, seconds):
 
 
 def clear_caps_lock(keyboard):
-    """If host Caps Lock is on, letters invert — toggle it off once."""
     try:
         if keyboard.led_on(Keyboard.LED_CAPS_LOCK):
             keyboard.send(Keycode.CAPS_LOCK)
@@ -111,7 +110,6 @@ def clear_caps_lock(keyboard):
 
 
 def tap(keyboard, keycode, shift=False):
-    """One clean keystroke with full press/release and no stuck modifiers."""
     keyboard.release_all()
     time.sleep(0.01)
     if shift:
@@ -143,24 +141,65 @@ def type_char(keyboard, keymap, ch):
     tap(keyboard, code, shift)
 
 
-def load_source(path):
-    """Read exact text; keep spaces; normalize only CR/LF to \\n."""
+def load_lines(path):
+    """Lines with leading indent removed (SB auto-indent handles cosmetics)."""
     with open(path, "rb") as handle:
         raw = handle.read()
-    text = raw.decode("utf-8")
-    text = text.replace("\r\n", "\n").replace("\r", "\n")
-    if not text.endswith("\n"):
-        text += "\n"
-    return text
+    text = raw.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")
+    lines = [line.lstrip(" \t") for line in text.split("\n")]
+    if lines and lines[-1] == "":
+        lines = lines[:-1]
+    return lines
 
 
-def validate(text, keymap):
-    for ch in text:
-        if ch in ("\n", "\r"):
-            continue
-        if ch not in keymap:
-            return False
+def validate_lines(lines, keymap):
+    for line in lines:
+        for ch in line:
+            if ch not in keymap:
+                return False
     return True
+
+
+def clear_auto_indent(keyboard):
+    """Undo SmileBASIC auto-indent on the current empty/new line."""
+    # HOME = head of line
+    tap(keyboard, Keycode.HOME, False)
+    time.sleep(0.02)
+
+    # Ctrl+DELETE = delete right side (auto-inserted spaces)
+    keyboard.release_all()
+    time.sleep(0.01)
+    keyboard.press(Keycode.CONTROL)
+    time.sleep(SHIFT_SETTLE_S)
+    keyboard.press(Keycode.DELETE)
+    time.sleep(KEY_DOWN_S)
+    keyboard.release(Keycode.DELETE)
+    time.sleep(KEY_UP_S)
+    keyboard.release(Keycode.CONTROL)
+    keyboard.release_all()
+    time.sleep(0.02)
+
+    # Shift+TAB unindent a few levels (SB maps this to Unindent)
+    for _ in range(6):
+        keyboard.release_all()
+        time.sleep(0.005)
+        keyboard.press(Keycode.SHIFT)
+        time.sleep(SHIFT_SETTLE_S)
+        keyboard.press(Keycode.TAB)
+        time.sleep(KEY_DOWN_S)
+        keyboard.release(Keycode.TAB)
+        time.sleep(KEY_UP_S)
+        keyboard.release(Keycode.SHIFT)
+        keyboard.release_all()
+        time.sleep(0.015)
+
+    tap(keyboard, Keycode.HOME, False)
+    time.sleep(0.02)
+
+
+def type_line(keyboard, keymap, line):
+    for ch in line:
+        type_char(keyboard, keymap, ch)
 
 
 def main():
@@ -170,11 +209,11 @@ def main():
 
     keymap = build_keymap()
     try:
-        text = load_source(BOOTSTRAP_PATH)
+        lines = load_lines(BOOTSTRAP_PATH)
     except OSError:
         error_loop(led)
 
-    if not validate(text, keymap):
+    if not validate_lines(lines, keymap):
         error_loop(led)
 
     wait_with_blink(led, START_DELAY_S)
@@ -184,20 +223,19 @@ def main():
     clear_caps_lock(keyboard)
     time.sleep(0.3)
 
-    # Character-by-character, including leading spaces on nested DEF bodies.
-    index = 0
-    length = len(text)
-    while index < length:
-        ch = text[index]
-        led.value = (index // 8) % 2 == 0
+    clear_auto_indent(keyboard)
+
+    for index, line in enumerate(lines):
+        led.value = index % 2 == 0
         try:
-            type_char(keyboard, keymap, ch)
+            type_line(keyboard, keymap, line)
+            type_char(keyboard, keymap, "\n")
+            time.sleep(LINE_DELAY_S)
+            if index + 1 < len(lines):
+                clear_auto_indent(keyboard)
         except Exception:
             keyboard.release_all()
             error_loop(led)
-        if ch == "\n":
-            time.sleep(LINE_DELAY_S)
-        index += 1
 
     keyboard.release_all()
     led.value = True

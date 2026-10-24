@@ -1,10 +1,9 @@
 # Raspberry Pi Pico CircuitPython auto-typer for SmileBASIC.
 #
-# Types bootstrap.bas into SmileBASIC.
-# Strips leading indent: SB auto-indents on Enter inside DEF/FOR/IF, and if we
-# also type file spaces the indent stacks (works at the start, breaks later).
-# After each Enter: HOME + Ctrl+DELETE + Shift+TAB clears auto-indent, then
-# the next line is typed with no leading spaces (valid SmileBASIC).
+# SmileBASIC sticky indent: after Enter, the new line KEEPS the previous
+# line's indentation. If we also type the file's leading spaces, indent
+# stacks and later lines break. Fix: track indent depth and only type the
+# delta (extra spaces or Backspace), then type the code with no leading ws.
 #
 # CIRCUITPY: boot.py, code.py, bootstrap.bas, lib/adafruit_hid/
 # LED: slow blink=wait, toggle=typing, solid=done, 3-blink=error
@@ -31,7 +30,6 @@ SHIFT_SETTLE_S = 0.02
 
 
 def build_keymap():
-    """ASCII char -> (keycode, needs_shift). US QWERTY only."""
     km = {}
     letters = "abcdefghijklmnopqrstuvwxyz"
     for i, ch in enumerate(letters):
@@ -141,12 +139,24 @@ def type_char(keyboard, keymap, ch):
     tap(keyboard, code, shift)
 
 
+def leading_indent(line):
+    """Count leading ASCII spaces (tabs count as 1 each if present)."""
+    n = 0
+    for ch in line:
+        if ch == " ":
+            n += 1
+        elif ch == "\t":
+            n += 1
+        else:
+            break
+    return n
+
+
 def load_lines(path):
-    """Lines with leading indent removed (SB auto-indent handles cosmetics)."""
     with open(path, "rb") as handle:
         raw = handle.read()
     text = raw.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")
-    lines = [line.lstrip(" \t") for line in text.split("\n")]
+    lines = text.split("\n")
     if lines and lines[-1] == "":
         lines = lines[:-1]
     return lines
@@ -154,51 +164,27 @@ def load_lines(path):
 
 def validate_lines(lines, keymap):
     for line in lines:
-        for ch in line:
+        body = line.lstrip(" \t")
+        for ch in body:
             if ch not in keymap:
                 return False
     return True
 
 
-def clear_auto_indent(keyboard):
-    """Undo SmileBASIC auto-indent on the current empty/new line."""
-    # HOME = head of line
-    tap(keyboard, Keycode.HOME, False)
-    time.sleep(0.02)
-
-    # Ctrl+DELETE = delete right side (auto-inserted spaces)
-    keyboard.release_all()
-    time.sleep(0.01)
-    keyboard.press(Keycode.CONTROL)
-    time.sleep(SHIFT_SETTLE_S)
-    keyboard.press(Keycode.DELETE)
-    time.sleep(KEY_DOWN_S)
-    keyboard.release(Keycode.DELETE)
-    time.sleep(KEY_UP_S)
-    keyboard.release(Keycode.CONTROL)
-    keyboard.release_all()
-    time.sleep(0.02)
-
-    # Shift+TAB unindent a few levels (SB maps this to Unindent)
-    for _ in range(6):
-        keyboard.release_all()
-        time.sleep(0.005)
-        keyboard.press(Keycode.SHIFT)
-        time.sleep(SHIFT_SETTLE_S)
-        keyboard.press(Keycode.TAB)
-        time.sleep(KEY_DOWN_S)
-        keyboard.release(Keycode.TAB)
-        time.sleep(KEY_UP_S)
-        keyboard.release(Keycode.SHIFT)
-        keyboard.release_all()
-        time.sleep(0.015)
-
-    tap(keyboard, Keycode.HOME, False)
-    time.sleep(0.02)
+def adjust_indent(keyboard, keymap, current, desired):
+    """Match sticky editor indent to the desired leading-space count."""
+    if desired > current:
+        for _ in range(desired - current):
+            type_char(keyboard, keymap, " ")
+    elif desired < current:
+        # Cursor sits after sticky indent spaces; backspace removes them.
+        for _ in range(current - desired):
+            tap(keyboard, Keycode.BACKSPACE, False)
+    # desired == current: already correct, type nothing
 
 
-def type_line(keyboard, keymap, line):
-    for ch in line:
+def type_body(keyboard, keymap, body):
+    for ch in body:
         type_char(keyboard, keymap, ch)
 
 
@@ -223,16 +209,20 @@ def main():
     clear_caps_lock(keyboard)
     time.sleep(0.3)
 
-    clear_auto_indent(keyboard)
+    # Sticky indent level the editor will keep after the next Enter.
+    current_indent = 0
 
     for index, line in enumerate(lines):
         led.value = index % 2 == 0
+        desired = leading_indent(line)
+        body = line.lstrip(" \t")
         try:
-            type_line(keyboard, keymap, line)
+            adjust_indent(keyboard, keymap, current_indent, desired)
+            type_body(keyboard, keymap, body)
+            # Enter: next line keeps THIS line's indent (sticky).
             type_char(keyboard, keymap, "\n")
+            current_indent = desired
             time.sleep(LINE_DELAY_S)
-            if index + 1 < len(lines):
-                clear_auto_indent(keyboard)
         except Exception:
             keyboard.release_all()
             error_loop(led)
